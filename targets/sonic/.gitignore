@@ -1,0 +1,7 @@
+/build
+/.*_ts
+/dependmodules.x
+/sonic.mk
+/*.pcap
+/sonic
+/of-tests/pd_thrift
