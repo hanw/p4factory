@@ -14,6 +14,7 @@ python-setuptools python-sympy python-yaml redis-server thrift-compiler \
 wireshark
 
 sudo pip install --upgrade thrift
+sudo pip install tenjin
 
 # build thrift from sources
 mkdir install_tmp
@@ -24,6 +25,16 @@ tar zxvf thrift-0.9.2.tar.gz
 cd thrift-0.9.2
 ./configure
 cd test/cpp ; ln -s . .libs ; cd ../..
+make -j4
+sudo make install
+sudo ldconfig
+cd ..
+
+# Install libnanomsg
+wget -c http://download.nanomsg.org/nanomsg-0.5-beta.tar.gz
+tar zxvf nanomsg-0.5-beta.tar.gz
+cd nanomsg-0.5-beta
+./configure
 make -j4
 sudo make install
 sudo ldconfig
