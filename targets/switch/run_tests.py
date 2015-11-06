@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 # Copyright 2013-present Barefoot Networks, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,16 +17,32 @@
 import sys
 import os
 from subprocess import Popen
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--test-dir", required=False,
+                    default=os.path.join("tests", "ptf-tests", "pd-tests"),
+                    help="directory containing the tests (default tests/ptf-tests/pd-tests)")
+args, unknown_args = parser.parse_known_args()
 
 root_dir = os.path.dirname(os.path.realpath(__file__))
-pd_dir = os.path.join(root_dir, 'of-tests/pd_thrift')
+pd_dir = os.path.join(root_dir, 'tests', 'pd_thrift')
+testutils_dir = os.path.join(root_dir, '..', '..', 'testutils')
 
-oft_path = os.path.join(root_dir, '..', '..', 'submodules', 'oft-infra', 'oft')
+ptf_path = os.path.join(root_dir, '..', '..', 'submodules', 'ptf', 'ptf')
+
+max_ports = 9
+cpu_port = 64
+cpu_veth = 251
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    args += ["--pd-thrift-path", pd_dir]
-    args += ["--enable-erspan", "--enable-vxlan", "--enable-geneve", "--enable-nvgre", "--enable-mpls"]
-    child = Popen([oft_path] + args)
+    new_args = unknown_args
+    new_args += ["--pypath", pd_dir]
+    new_args += ["--pypath", testutils_dir]
+    new_args += ["--test-dir", args.test_dir]
+    for port in xrange(max_ports):
+        new_args += ["--interface", "%d@veth%d" % (port, 2 * port + 1)]
+    new_args += ["--interface", "%s@veth%s" % (cpu_port, cpu_veth)]
+    child = Popen([ptf_path] + new_args)
     child.wait()
     sys.exit(child.returncode)

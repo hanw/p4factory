@@ -211,9 +211,9 @@ class ThriftClient(object):
   def get_table_names(self):
     table_names = []
     for function in dir(self.p4_client_module):
-      regex = '^%s(?P<table_name>\S+)%s' % (self.get_spec_prefix(), ThriftClient.MATCH_SPEC_T)
+      regex = '^(?P<table_name>\S+)%s' % (ThriftClient.SET_DEFAULT_ACTION)
       m = re.search(regex, function)
-      if m is not None:
+      if m is not None and m.group("table_name") not in table_names:
         table_names.append(m.group("table_name"))
     return table_names
 
@@ -286,28 +286,22 @@ class ThriftClient(object):
 # Multicast api
 
   def mc_mgrp_create(self, mgid):
-    return self._mc.mc_mgrp_create(self._session_handle, self._dev_target, mgid)
+    return self._mc.mc_mgrp_create(self._session_handle, self._dev_target.dev_id, mgid)
 
-  def mc_l1_node_create(self, rid):
-    return self._mc.mc_l1_node_create(self._session_handle, self._dev_target, rid)
+  def mc_node_create(self, rid, port_map, lag_map):
+    return self._mc.mc_node_create(self._session_handle, self._dev_target.dev_id, rid, port_map, lag_map)
 
-  def mc_l1_associate_node(self, mgrp_hdl, l1_hdl):
-    return self._mc.mc_l1_associate_node(self._session_handle, self._dev_target, mgrp_hdl, l1_hdl)
-
-  def mc_l2_node_create(self, l1_hdl, port_map, lag_map):
-    return self._mc.mc_l2_node_create(self._session_handle, self._dev_target, l1_hdl, port_map, lag_map)
+  def mc_node_update(self, l1_hdl, port_map, lag_map):
+    return self._mc.mc_node_update(self._session_handle, self._dev_target.dev_id, port_map, lag_map)
 
   def mc_mgrp_destroy(self, mgrp_hdl):
-    return self._mc.mc_mgrp_destroy(self._session_handle, self._dev_target, mgrp_hdl)
+    return self._mc.mc_mgrp_destroy(self._session_handle, self._dev_target.dev_id, mgrp_hdl)
 
-  def mc_l1_node_destroy(self, l1_hdl):
-    return self._mc.mc_l1_node_destroy(self._session_handle, self._dev_target, l1_hdl)
+  def mc_node_destroy(self, l1_hdl):
+    return self._mc.mc_node_destroy(self._session_handle, self._dev_target.dev_id, l1_hdl)
 
-  def mc_l2_node_destroy(self, l2_hdl):
-    return self._mc.mc_l2_node_destroy(self._session_handle, self._dev_target, l2_hdl)
+  def mc_associate_node(self, grp_hdl, l1_hdl):
+    return self._mc.mc_associate_node(self._session_handle, self._dev_target.dev_id, grp_hdl, l1_hdl)
 
-  def mc_l2_node_update(self, l2_hdl, port_map, lag_map):
-    return self._mc.mc_l2_node_update(self._session_handle, self._dev_target, l2_hdl, port_map, lag_map)
-
-#  TODO: Add def mc_lag_update()
-
+  def mc_dissociate_node(self, grp_hdl, l1_hdl):
+    return self._mc.mc_dissociate_node(self._session_handle, self._dev_target.dev_id, grp_hdl, l1_hdl)
