@@ -1,4 +1,20 @@
 /*
+Copyright 2013-present Barefoot Networks, Inc. 
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
  * Layer-2 processing
  */
 
@@ -17,6 +33,9 @@ header_type l2_metadata_t {
         stp_group: 10;                         /* spanning tree group id */
         stp_state : 3;                         /* spanning tree port state */
         bd_stats_idx : 16;                     /* ingress BD stats index */
+        learning_enabled : 1;                  /* is learning enabled */
+        port_vlan_mapping_miss : 1;            /* port vlan mapping miss */
+        same_if_check : IFINDEX_BIT_WIDTH;     /* same interface check */
     }
 }
 
@@ -72,7 +91,7 @@ table smac {
         smac_miss;
         smac_hit;
     }
-    size : SMAC_TABLE_SIZE;
+    size : MAC_TABLE_SIZE;
 }
 
 /*****************************************************************************/
@@ -80,6 +99,7 @@ table smac {
 /*****************************************************************************/
 action dmac_hit(ifindex) {
     modify_field(ingress_metadata.egress_ifindex, ifindex);
+    bit_xor(l2_metadata.same_if_check, l2_metadata.same_if_check, ifindex);
 }
 
 action dmac_multicast_hit(mc_index) {
@@ -118,6 +138,10 @@ table dmac {
         l2_metadata.lkp_mac_da : exact;
     }
     actions {
+#ifdef OPENFLOW_ENABLE
+        openflow_apply;
+        openflow_miss;
+#endif /* OPENFLOW_ENABLE */
         nop;
         dmac_hit;
         dmac_multicast_hit;
@@ -125,12 +149,8 @@ table dmac {
         dmac_redirect_nexthop;
         dmac_redirect_ecmp;
         dmac_drop;
-#ifdef OPENFLOW_ENABLE
-        openflow_apply;
-        openflow_miss;
-#endif /* OPENFLOW_ENABLE */
     }
-    size : DMAC_TABLE_SIZE;
+    size : MAC_TABLE_SIZE;
     support_timeout: true;
 }
 #endif /* L2_DISABLE */
@@ -172,7 +192,9 @@ table learn_notify {
 
 control process_mac_learning {
 #ifndef L2_DISABLE
-    apply(learn_notify);
+    if (l2_metadata.learning_enabled == TRUE) {
+        apply(learn_notify);
+    }
 #endif /* L2_DISABLE */
 }
 
@@ -194,17 +216,10 @@ action set_multicast() {
     add_to_field(l2_metadata.bd_stats_idx, 1);
 }
 
-action set_ip_multicast() {
-    modify_field(l2_metadata.lkp_pkt_type, L2_MULTICAST);
-    add_to_field(l2_metadata.bd_stats_idx, 1);
-    modify_field(multicast_metadata.ip_multicast, TRUE);
-}
-
-action set_ip_multicast_and_ipv6_src_is_link_local() {
+action set_multicast_and_ipv6_src_is_link_local() {
     modify_field(l2_metadata.lkp_pkt_type, L2_MULTICAST);
     modify_field(ipv6_metadata.ipv6_src_is_link_local, TRUE);
     add_to_field(l2_metadata.bd_stats_idx, 1);
-    modify_field(multicast_metadata.ip_multicast, TRUE);
 }
 
 action set_broadcast() {
@@ -212,11 +227,33 @@ action set_broadcast() {
     add_to_field(l2_metadata.bd_stats_idx, 2);
 }
 
+action set_malformed_packet(drop_reason) {
+    modify_field(ingress_metadata.drop_flag, TRUE);
+    modify_field(ingress_metadata.drop_reason, drop_reason);
+}
+
 table validate_packet {
     reads {
+#ifndef __TARGET_BMV2__
+        l2_metadata.lkp_mac_sa mask 0x010000000000 : ternary;
+#else
+        l2_metadata.lkp_mac_sa : ternary;
+#endif
         l2_metadata.lkp_mac_da : ternary;
+        l3_metadata.lkp_ip_type : ternary;
+        l3_metadata.lkp_ip_ttl : ternary;
+        l3_metadata.lkp_ip_version : ternary;
+#ifndef __TARGET_BMV2__
+        ipv4_metadata.lkp_ipv4_sa mask 0xFF000000 : ternary;
+#else
+        ipv4_metadata.lkp_ipv4_sa : ternary;
+#endif
 #ifndef IPV6_DISABLE
+#ifndef __TARGET_BMV2__
+        ipv6_metadata.lkp_ipv6_sa mask 0xFFFF0000000000000000000000000000 : ternary;
+#else
         ipv6_metadata.lkp_ipv6_sa : ternary;
+#endif
 #endif /* IPV6_DISABLE */
     }
     actions {
@@ -224,15 +261,17 @@ table validate_packet {
         set_unicast;
         set_unicast_and_ipv6_src_is_link_local;
         set_multicast;
-        set_ip_multicast;
-        set_ip_multicast_and_ipv6_src_is_link_local;
+        set_multicast_and_ipv6_src_is_link_local;
         set_broadcast;
+        set_malformed_packet;
     }
     size : VALIDATE_PACKET_TABLE_SIZE;
 }
 
 control process_validate_packet {
-    apply(validate_packet);
+    if (ingress_metadata.drop_flag == FALSE) {
+        apply(validate_packet);
+    }
 }
 
 
@@ -272,12 +311,6 @@ action remove_vlan_double_tagged() {
     remove_header(vlan_tag_[1]);
 }
 
-action remove_vlan_qinq_tagged() {
-    modify_field(ethernet.etherType, vlan_tag_[1].etherType);
-    remove_header(vlan_tag_[0]);
-    remove_header(vlan_tag_[1]);
-}
-
 table vlan_decap {
     reads {
         vlan_tag_[0] : valid;
@@ -287,7 +320,6 @@ table vlan_decap {
         nop;
         remove_vlan_single_tagged;
         remove_vlan_double_tagged;
-        remove_vlan_qinq_tagged;
     }
     size: VLAN_DECAP_TABLE_SIZE;
 }

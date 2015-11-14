@@ -42,9 +42,6 @@ header_type fabric_header_t {
 
         dstDevice : 8;
         dstPortOrGroup : 16;
-
-        ingressIfindex : 16;
-        ingressBd : 16;
     }
 }
 
@@ -55,6 +52,9 @@ header_type fabric_header_cpu_t {
         reserved : 2;
 
         ingressPort: 16;
+        ingressIfindex : 16;
+        ingressBd : 16;
+
         reasonCode : 16;
     }
 }
@@ -126,17 +126,19 @@ action openflow_miss(reason, table_id) {
 action packet_out_eth_flood() {
     modify_field(intrinsic_metadata.mcast_grp, fabric_header.dstPortOrGroup);
     terminate_cpu_packet();
+    modify_field(openflow_metadata.ofvalid, TRUE);
 }
 
 action packet_out_unicast() {
     modify_field(standard_metadata.egress_spec, fabric_header.dstPortOrGroup);
     terminate_cpu_packet();
+    modify_field(openflow_metadata.ofvalid, TRUE);
 }
 
 table packet_out {
     reads {
         fabric_header.packetType : exact;
-        fabric_header_cpu.reserved : exact;
+        fabric_header_cpu.reasonCode : exact;
     }
 
     actions {
